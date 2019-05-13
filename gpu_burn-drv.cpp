@@ -25,6 +25,10 @@
  * The views and conclusions contained in the software and documentation are those
  * of the authors and should not be interpreted as representing official policies,
  * either expressed or implied, of the FreeBSD Project.
+ *
+ *
+ * Modified 13.05.2019 Zack Ramjan
+ * Added ability to bind to a specific GPU unit.
  */
 
 #define SIZE 2048ul // Matrices are SIZE*SIZE..  2048^2 should be efficiently implemented in CUBLAS
@@ -46,6 +50,8 @@
 #include <unistd.h>
 #include <time.h>
 #include <fstream>
+#include <stdlib.h>
+#include <ctype.h>
 
 #include <cuda.h>
 #include "cublas_v2.h"
@@ -540,7 +546,7 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int 
 		printf("\tGPU %d: %s\n", (int)i, clientFaulty.at(i) ? "FAULTY" : "OK");
 }
 
-template<class T> void launch(int runLength, bool useDoubles) {
+template<class T> void launch(int runLength, bool useDoubles, int bindGPU) {
 	system("nvidia-smi -L");
 
 	// Initting A and B with random data
@@ -568,8 +574,8 @@ template<class T> void launch(int runLength, bool useDoubles) {
 		int writeFd = mainPipe[1];
 		int devCount = initCuda();
 		write(writeFd, &devCount, sizeof(int));
-
-		startBurn<T>(0, writeFd, A, B, useDoubles);
+		if(bindGPU < 1)
+			startBurn<T>(0, writeFd, A, B, useDoubles);
 
 		close(writeFd);
 		return;
@@ -583,8 +589,14 @@ template<class T> void launch(int runLength, bool useDoubles) {
 		if (!devCount) {
 			fprintf(stderr, "No CUDA devices\n");
 		} else {
-
-			for (int i = 1; i < devCount; ++i) {
+			
+			if(bindGPU==-1)
+				bindGPU=1;
+			else
+				devCount = bindGPU+1;
+		 
+			for (int i=bindGPU; i <  devCount && bindGPU != 0; ++i) {
+			//for (int i = 1; i < devCount; ++i) {
 				int slavePipe[2];
 				pipe(slavePipe);
 				clientPipes.push_back(slavePipe[0]);
@@ -619,20 +631,38 @@ template<class T> void launch(int runLength, bool useDoubles) {
 int main(int argc, char **argv) {
 	int runLength = 10;
 	bool useDoubles = false;
-	int thisParam = 0;
-	if (argc >= 2 && std::string(argv[1]) == "-d") {
-			useDoubles = true;
-			thisParam++;
-		}
-	if (argc-thisParam < 2)
-		printf("Run length not specified in the command line.  Burning for 10 secs\n");
-	else 
-		runLength = atoi(argv[1+thisParam]);
+	int bindGPU=-1;
+	char *ivalue = NULL;
+	char *rvalue = NULL;
+	int c;
+
+	while ((c = getopt (argc, argv, "r:di:")) != -1)
+		switch (c)
+		{
+			case 'r':
+				rvalue = optarg;
+				runLength = atoi(rvalue);	
+				break;
+			case 'd':
+				useDoubles = true;
+				break;
+			case 'i':
+				ivalue = optarg;
+				bindGPU = atoi(ivalue);
+				break;
+			case '?':
+				fprintf (stderr, "\nUsage gpu_burn [-r runtime_in_seconds] [-i gpu_id] [-d]\n");
+				fprintf (stderr, "\t-r runtime_in_seconds : how many seconds to run, defaults to 10sec if not specified\n");
+				fprintf (stderr, "\t-i gpu_id : which specific gpu to run on. If not specified will run on all gpus\n");
+				fprintf (stderr, "\t-d : use double precision, if not set, will use single precision\n\n");
+				return 1;
+			default:
+				abort ();
+		}	
 
 	if (useDoubles)
-		launch<double>(runLength, useDoubles);
+		launch<double>(runLength, useDoubles,bindGPU);
 	else
-		launch<float>(runLength, useDoubles);
-
+		launch<float>(runLength, useDoubles,bindGPU);
 	return 0;
 }
