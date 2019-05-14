@@ -541,14 +541,9 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int 
 	while (wait(NULL) != -1);
 	printf("done\n");
 	
-	//if(bindGPU  > 0)
-	//	printf("\nTested 1 GPUs\n\tGPU %d: %s\n", bindGPU , clientFaulty.at(1) ? "FAULTY" : "OK");
-	//else
-	//{
-	//	printf("\nTested %d GPUs:\n", (int)clientPid.size());
-		for (size_t i =  0; i < clientPid.size(); ++i)
-			printf("\tGPU %d: %s\n", (bindGPU > 0 ? bindGPU : (int)i), clientFaulty.at(i) ? "FAULTY" : "OK");
-	//}		
+	printf("\nTested %d GPUs:\n", (int)clientPid.size());
+	for (size_t i =  0; i < clientPid.size(); ++i)
+		printf("\tGPU %d: %s\n", (bindGPU > 0 ? bindGPU : (int)i), clientFaulty.at(i) ? "FAULTY" : "OK");
 }
 
 template<class T> void launch(int runLength, bool useDoubles, int bindGPU) {
