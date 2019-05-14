@@ -389,7 +389,7 @@ void updateTemps(int handle, std::vector<int> *temps) {
 		gpuIter = (gpuIter+1)%(temps->size()); // We rotate the iterator for N/A values as well
 }
 
-void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int runTime) {
+void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int runTime, int bindGPU) {
 	fd_set waitHandles;
 	
 	pid_t tempPid;
@@ -474,13 +474,13 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int 
 			float elapsed = fminf((float)(thisTime-startTime)/(float)runTime*100.0f, 100.0f);
 			printf("\r%.1f%%  ", elapsed);
 			printf("proc'd: ");
-			for (size_t i = 0; i < clientCalcs.size(); ++i) {
+			for (size_t i =  0; i < clientCalcs.size(); ++i) {
 				printf("%d (%.0f Gflop/s) ", clientCalcs.at(i), clientGflops.at(i));
 				if (i != clientCalcs.size() - 1)
 					printf("- ");
 			}
 			printf("  errors: ");
-			for (size_t i = 0; i < clientErrors.size(); ++i) {
+			for (size_t i =  0; i < clientErrors.size(); ++i) {
 				std::string note = "%d ";
 				if (clientCalcs.at(i) == -1)
 					note += " (DIED!)";
@@ -492,7 +492,7 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int 
 					printf("- ");
 			}
 			printf("  temps: ");
-			for (size_t i = 0; i < clientTemp.size(); ++i) {
+			for (size_t i =  0; i < clientTemp.size(); ++i) {
 				printf(clientTemp.at(i) != 0 ? "%d C " : "-- ", clientTemp.at(i));
 				if (i != clientCalcs.size() - 1)
 					printf("- ");
@@ -540,10 +540,15 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int 
 
 	while (wait(NULL) != -1);
 	printf("done\n");
-
-	printf("\nTested %d GPUs:\n", (int)clientPid.size());
-	for (size_t i = 0; i < clientPid.size(); ++i)
-		printf("\tGPU %d: %s\n", (int)i, clientFaulty.at(i) ? "FAULTY" : "OK");
+	
+	//if(bindGPU  > 0)
+	//	printf("\nTested 1 GPUs\n\tGPU %d: %s\n", bindGPU , clientFaulty.at(1) ? "FAULTY" : "OK");
+	//else
+	//{
+	//	printf("\nTested %d GPUs:\n", (int)clientPid.size());
+		for (size_t i =  0; i < clientPid.size(); ++i)
+			printf("\tGPU %d: %s\n", (bindGPU > 0 ? bindGPU : (int)i), clientFaulty.at(i) ? "FAULTY" : "OK");
+	//}		
 }
 
 template<class T> void launch(int runLength, bool useDoubles, int bindGPU) {
@@ -574,9 +579,7 @@ template<class T> void launch(int runLength, bool useDoubles, int bindGPU) {
 		int writeFd = mainPipe[1];
 		int devCount = initCuda();
 		write(writeFd, &devCount, sizeof(int));
-		if(bindGPU < 1)
-			startBurn<T>(0, writeFd, A, B, useDoubles);
-
+		startBurn<T>((bindGPU > -1 ? bindGPU : 0), writeFd, A, B, useDoubles);
 		close(writeFd);
 		return;
 	} else {
@@ -589,14 +592,8 @@ template<class T> void launch(int runLength, bool useDoubles, int bindGPU) {
 		if (!devCount) {
 			fprintf(stderr, "No CUDA devices\n");
 		} else {
-			
-			if(bindGPU==-1)
-				bindGPU=1;
-			else
-				devCount = bindGPU+1;
 		 
-			for (int i=bindGPU; i <  devCount && bindGPU != 0; ++i) {
-			//for (int i = 1; i < devCount; ++i) {
+			for (int i = 1; i < devCount && bindGPU < 0; ++i) {
 				int slavePipe[2];
 				pipe(slavePipe);
 				clientPipes.push_back(slavePipe[0]);
@@ -617,7 +614,7 @@ template<class T> void launch(int runLength, bool useDoubles, int bindGPU) {
 				}
 			}
 			
-			listenClients(clientPipes, clientPids, runLength);
+			listenClients(clientPipes, clientPids, runLength, bindGPU);
 		}
 	}
 
